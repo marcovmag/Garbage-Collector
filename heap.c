@@ -36,10 +36,11 @@ void chunk_list_insert(Chunk_List *list, void *start, size_t size)
     list->count += 1;
 }
 
-void chunk_list_merge(Chunk_List *dst, const Chunk_List *src)
-{
+void chunk_list_merge()
+{   Chunk_List *dst,*src;
+    src = &freed_chunks;
+    dst = &tmp_chunks;
     dst->count = 0;
-
     for (size_t i = 0; i < src->count; ++i) {
         const Chunk chunk = src->chunks[i];
 
@@ -55,6 +56,7 @@ void chunk_list_merge(Chunk_List *dst, const Chunk_List *src)
             chunk_list_insert(dst, chunk.start, chunk.size);
         }
     }
+    freed_chunks = tmp_chunks;
 }
 
 void chunk_list_dump(const Chunk_List *list, const char *name)
@@ -92,8 +94,6 @@ void *heap_alloc(size_t size_bytes)
     const size_t size_words = (size_bytes + sizeof(uintptr_t) - 1) / sizeof(uintptr_t);
 
     if (size_words > 0) {
-        chunk_list_merge(&tmp_chunks, &freed_chunks);
-        freed_chunks = tmp_chunks;
 
         for (size_t i = 0; i < freed_chunks.count; ++i) {
             const Chunk chunk = freed_chunks.chunks[i];
@@ -125,6 +125,7 @@ void heap_free(void *ptr)
                           alloced_chunks.chunks[index].start,
                           alloced_chunks.chunks[index].size);
         chunk_list_remove(&alloced_chunks, (size_t) index);
+        chunk_list_merge();
     }
 }
 
@@ -149,7 +150,6 @@ void heap_collect()
     const uintptr_t *stack_start = (const uintptr_t*)__builtin_frame_address(0);
     memset(reachable_chunks, 0, sizeof(reachable_chunks));
     mark_region(stack_start, stack_base + 1);
-
     to_free_count = 0;
     for (size_t i = 0; i < alloced_chunks.count; ++i) {
         if (!reachable_chunks[i]) {
@@ -157,8 +157,8 @@ void heap_collect()
             to_free[to_free_count++] = alloced_chunks.chunks[i].start;
         }
     }
-
     for (size_t i = 0; i < to_free_count; ++i) {
         heap_free(to_free[i]);
     }
+    
 }
